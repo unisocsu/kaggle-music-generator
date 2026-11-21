@@ -1,0 +1,13 @@
+{
+  "id": "KAGGLE_USER_NAME/kaggle-music-generator-worker",
+  "title": "Kaggle Music Generator Worker",
+  "code_file": "worker.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}
