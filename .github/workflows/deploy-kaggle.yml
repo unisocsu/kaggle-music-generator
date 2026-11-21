@@ -17,6 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Kaggle CLI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Kaggle CLI imports six; install it explicitly before the CLI.
+          python -m pip install --upgrade six kaggle
+          python -c "import six, kaggle; print('six and Kaggle CLI are ready')"
+
       - name: Configure Kaggle API token
         env:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
@@ -25,9 +32,6 @@ jobs:
           mkdir -p "$HOME/.kaggle"
           printf '%s' "$KAGGLE_KEY" | tr -d '\r\n' > "$HOME/.kaggle/access_token"
           chmod 600 "$HOME/.kaggle/access_token"
-
-      - name: Install Kaggle CLI
-        run: python -m pip install --upgrade kaggle
 
       - name: Prepare Kaggle notebook metadata
         env:
@@ -45,6 +49,8 @@ jobs:
           PY
 
       - name: Push notebook to Kaggle
+        env:
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          export KAGGLE_API_TOKEN="$(tr -d '\r\n' < "$HOME/.kaggle/access_token")"
+          export KAGGLE_API_TOKEN="$(printf '%s' "$KAGGLE_KEY" | tr -d '\r\n')"
           kaggle kernels push -p kaggle/notebook
