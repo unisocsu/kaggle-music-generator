@@ -19,11 +19,11 @@ jobs:
 
       - name: Configure Kaggle API token
         env:
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_KEY: \${{ secrets.KAGGLE_KEY }}
         run: |
           test -n "$KAGGLE_KEY" || (echo "Missing KAGGLE_KEY secret" && exit 1)
           mkdir -p "$HOME/.kaggle"
-          printf '%s' "$KAGGLE_KEY" > "$HOME/.kaggle/access_token"
+          printf '%s' "$KAGGLE_KEY" | tr -d '\r\n' > "$HOME/.kaggle/access_token"
           chmod 600 "$HOME/.kaggle/access_token"
 
       - name: Install Kaggle CLI
@@ -31,7 +31,7 @@ jobs:
 
       - name: Prepare Kaggle notebook metadata
         env:
-          KAGGLE_USER_NAME: ${{ secrets.KAGGLE_USER_NAME }}
+          KAGGLE_USER_NAME: \${{ secrets.KAGGLE_USER_NAME }}
         run: |
           test -n "$KAGGLE_USER_NAME" || (echo "Missing KAGGLE_USER_NAME secret" && exit 1)
           python - <<'PY'
@@ -39,12 +39,12 @@ jobs:
           path = "kaggle/notebook/kernel-metadata.json"
           with open(path) as f:
               data = json.load(f)
-          data["id"] = os.environ["KAGGLE_USER_NAME"] + "/kaggle-music-generator-worker"
+          data["id"] = os.environ["KAGGLE_USER_NAME"].strip() + "/kaggle-music-generator-worker"
           with open(path, "w") as f:
               json.dump(data, f, indent=2)
           PY
 
       - name: Push notebook to Kaggle
-        env:
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_KEY }}
-        run: kaggle kernels push -p kaggle/notebook
+        run: |
+          export KAGGLE_API_TOKEN="$(tr -d '\r\n' < "$HOME/.kaggle/access_token")"
+          kaggle kernels push -p kaggle/notebook
