@@ -15,3 +15,6 @@ Create a Kaggle Notebook Secret named GITHUB_TOKEN. It must be a fine-grained Gi
 The notebook uses ACE-Step 1.5 Turbo DiT + 0.6B LM, initializes them once, and processes one queued issue at a time. The default LM backend is pt for compatibility. The first run downloads model weights and installs dependencies; later runs may still need to reload weights if Kaggle has reset the session.
 
 Kaggle sessions are not guaranteed always-on. Pending requests stay in GitHub Issues until the worker is running again.
+
+
+Kaggle CLI 2.x authentication note: KAGGLE_KEY must contain the current Kaggle API token generated from Kaggle Settings > API > Generate New Token. The deployment workflow passes it as KAGGLE_API_TOKEN and writes the CLI access_token file. If you stored an older legacy API key, replace that secret with the current API token value.
