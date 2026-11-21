@@ -1,5 +1,5 @@
 """GitHub Actions orchestrator for a long-lived Kaggle music session."""
-import json, os, re, shutil, subprocess, sys, tempfile
+import json, os, re, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -99,25 +99,64 @@ def process_log_line(line, announced, failed):
                 print(f"Could not report failure for issue #{number}: {exc}", file=sys.stderr, flush=True)
 
 
-def follow_logs(announced, failed):
-    command = ["kaggle", "kernels", "logs", KERNEL, "--follow"]
-    print("+", " ".join(command), flush=True)
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
-    try:
-        for line in process.stdout:
-            print("[KAGGLE] " + line.rstrip(), flush=True)
-            process_log_line(line, announced, failed)
-    finally:
-        process.stdout.close()
-    code = process.wait()
-    status = subprocess.run(["kaggle", "kernels", "status", KERNEL], capture_output=True, text=True)
-    status_text = (status.stdout + "\n" + status.stderr).strip()
-    print("Final Kaggle status:", status_text, flush=True)
-    if code != 0:
-        raise RuntimeError("kaggle kernels logs --follow exited with code " + str(code))
-    if "ERROR" in status_text.upper() or "FAILED" in status_text.upper():
-        raise RuntimeError("Kaggle session failed: " + status_text)
+def kernel_status():
+    result = subprocess.run(
+        ["kaggle", "kernels", "status", KERNEL],
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    status_text = (result.stdout + "\\n" + result.stderr).strip()
+    if result.returncode != 0:
+        print("Kaggle status query failed:", status_text, flush=True)
+    else:
+        print("Kaggle status:", status_text, flush=True)
+    return status_text, result.returncode
 
+
+def follow_logs(announced, failed):
+    # Kaggle's current CLI uses an SSE stream for --follow. Its stream endpoint
+    # can transiently return HTTP 500 while a newly pushed kernel is QUEUED.
+    # Reconnect instead of treating that temporary stream failure as a failed run.
+    deadline = time.monotonic() + 5 * 60 * 60 + 40 * 60
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        command = ["kaggle", "kernels", "logs", KERNEL, "--follow"]
+        print(f"Opening Kaggle log stream (attempt {attempt}):", " ".join(command), flush=True)
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", bufsize=1
+        )
+        try:
+            for line in process.stdout:
+                print("[KAGGLE] " + line.rstrip(), flush=True)
+                process_log_line(line, announced, failed)
+        finally:
+            if process.stdout:
+                process.stdout.close()
+        code = process.wait()
+        status_text, status_code = kernel_status()
+        upper = status_text.upper()
+
+        if "KERNELWORKERSTATUS.COMPLETE" in upper or re.search(r"\\bCOMPLETE\\b", upper):
+            if code != 0:
+                print("Log stream ended with an error after Kaggle completed; continuing to collect output.", flush=True)
+            return
+
+        if any(marker in upper for marker in (
+            "KERNELWORKERSTATUS.ERROR", "KERNELWORKERSTATUS.CANCELLED",
+            "KERNELWORKERSTATUS.FAILED"
+        )) or re.search(r"\\b(FAILED|CANCELLED)\\b", upper):
+            raise RuntimeError("Kaggle session ended unsuccessfully: " + status_text)
+
+        print(
+            f"Kaggle log stream ended (exit {code}, status-query exit {status_code}); "
+            "kernel is not in a terminal state. Retrying in 20 seconds.",
+            flush=True
+        )
+        time.sleep(20)
+
+    status_text, _ = kernel_status()
+    raise TimeoutError("Timed out waiting for Kaggle kernel to finish. Last status: " + status_text)
 
 def publish(number, audio_path):
     tag = f"music-job-{number}"
