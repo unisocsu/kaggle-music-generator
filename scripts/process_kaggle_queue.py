@@ -104,7 +104,7 @@ def kernel_status():
         ["kaggle", "kernels", "status", KERNEL],
         capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
-    status_text = (result.stdout + "\\n" + result.stderr).strip()
+    status_text = (result.stdout + "\n" + result.stderr).strip()
     if result.returncode != 0:
         print("Kaggle status query failed:", status_text, flush=True)
     else:
