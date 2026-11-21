@@ -27,7 +27,7 @@ jobs:
           kaggle --help >/dev/null
       - name: Configure Kaggle credentials
         env:
-          KAGGLE_KEY: \${{ secrets.KAGGLE_KEY }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           test -n "$KAGGLE_KEY" || (echo "Missing KAGGLE_KEY repository secret" && exit 1)
           mkdir -p "$HOME/.kaggle"
@@ -36,9 +36,9 @@ jobs:
           echo "KAGGLE_API_TOKEN=$(cat "$HOME/.kaggle/access_token")" >> "$GITHUB_ENV"
       - name: Run one long-lived Kaggle session
         env:
-          GITHUB_TOKEN: \${{ github.token }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
-          KAGGLE_USER_NAME: \${{ secrets.KAGGLE_USER_NAME }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          KAGGLE_USER_NAME: ${{ secrets.KAGGLE_USER_NAME }}
         run: |
           test -n "$KAGGLE_USER_NAME" || (echo "Missing KAGGLE_USER_NAME repository secret" && exit 1)
           python scripts/process_kaggle_queue.py
