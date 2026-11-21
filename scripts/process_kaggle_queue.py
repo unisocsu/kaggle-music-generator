@@ -168,6 +168,11 @@ def main():
                 continue
             url, release_url = publish(number, audio)
             comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})\n\n[GitHub Release]({release_url})")
+            issue = api(f"/issues/{number}")
+            issue_body = issue.get("body") or ""
+            issue_body = re.sub(r"\n*RESULT_URL:\s*https://\S+\s*$", "", issue_body)
+            issue_body += f"\n\nRESULT_URL: {url}\n"
+            api(f"/issues/{number}", "PATCH", {"body": issue_body})
             set_status(number, "completed")
             api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
             print(f"Published issue #{number}: {url}", flush=True)
