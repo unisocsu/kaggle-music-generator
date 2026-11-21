@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "type": "music_generation",
+  "prompt": "Upbeat cinematic pop with warm piano and energetic drums",
+  "lyrics": "",
+  "duration_seconds": 210,
+  "instrumental": false,
+  "language": "en",
+  "seed": null
+}
