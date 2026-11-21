@@ -1,22 +1,26 @@
-# Kaggle worker
+# Kaggle C++ worker
 
 ## GitHub-side deployment credentials
-The repository workflow reads the GitHub Actions secrets KAGGLE_USER_NAME and KAGGLE_KEY to deploy this notebook through the Kaggle CLI.
+The deployment workflow reads `KAGGLE_USER_NAME` and `KAGGLE_KEY`. It installs `six` explicitly before the Kaggle CLI to avoid the missing-six import failure.
 
 ## Secret required inside Kaggle
-Create a Kaggle Notebook Secret named GITHUB_TOKEN. It must be a fine-grained GitHub token limited to this repository with Issues read/write and Contents read/write. The token is used only by the running worker to read/claim Issues, create Releases, upload audio, and post results.
+Create a Kaggle Notebook Secret named `GITHUB_TOKEN`. It must be a fine-grained GitHub token limited to this repository with Issues read/write and Contents read/write. The token is used by the running worker to read/claim Issues, create Releases, upload audio, and post results.
 
 ## Start
-1. Add both GitHub Actions secrets.
-2. Run the Deploy Kaggle worker notebook workflow (or push a change under kaggle/).
-3. Open the deployed Kaggle notebook and add the GITHUB_TOKEN notebook secret.
-4. Enable GPU and Internet, then run all cells.
+1. Add GitHub Actions secrets `KAGGLE_KEY` and `KAGGLE_USER_NAME`.
+2. Add the Kaggle Notebook Secret `GITHUB_TOKEN`.
+3. Run the Deploy Kaggle worker notebook workflow.
+4. Open the deployed notebook and run all cells with GPU and Internet enabled.
 
-The notebook uses ACE-Step 1.5 Turbo DiT + 0.6B LM, initializes them once, and processes one queued issue at a time. The default LM backend is pt for compatibility. The first run downloads model weights and installs dependencies; later runs may still need to reload weights if Kaggle has reset the session.
+The notebook clones and builds `ServeurpersoCom/acestep.cpp` with CUDA, downloads the Q8_0 Turbo model set, and starts the Issues worker.
 
-Kaggle sessions are not guaranteed always-on. Pending requests stay in GitHub Issues until the worker is running again.
+## Model choices
+- LM: 4B Q8_0 for higher quality.
+- DiT: Turbo Q8_0 (8 inference steps).
+- Text encoder: Qwen3 Embedding 0.6B Q8_0.
+- VAE: BF16.
+- GPU: CUDA0 (first T4).
 
+The C++ CLI is invoked as two stages per job: `ace-lm` creates the enriched request and audio codes; `ace-synth` renders the MP3. The compiled binaries and downloaded model files stay on disk for the life of the Kaggle session. The CLI processes are started for each song, so model weights are loaded again for a new job.
 
-Kaggle CLI 2.x authentication note: KAGGLE_KEY must contain the current Kaggle API token generated from Kaggle Settings > API > Generate New Token. The deployment workflow passes it as KAGGLE_API_TOKEN and writes the CLI access_token file. If you stored an older legacy API key, replace that secret with the current API token value.
-
-Deployment workflow now normalizes whitespace around the Kaggle API token before passing it to the current Kaggle CLI.
+Kaggle sessions are not guaranteed to stay online. Queued Issues remain pending until the notebook worker is started again.
