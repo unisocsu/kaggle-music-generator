@@ -23,8 +23,9 @@ jobs:
           p=Path("kaggle/notebook/worker.ipynb")
           nb=nbformat.read(p,as_version=4)
           nbformat.validate(nb)
-          assert any(c.get("id")=="job-payload" and "JOB_PAYLOAD = None" in "".join(c.source) for c in nb.cells)
-          json.loads(Path("kaggle/notebook/kernel-metadata.json").read_text())
-          print("Notebook template and metadata are valid.")
+          assert any(c.get("id")=="session" and "session_worker.py" in "".join(c.source) for c in nb.cells)
+          meta=json.loads(Path("kaggle/notebook/kernel-metadata.json").read_text())
+          assert meta["code_file"]=="worker.ipynb"
+          print("Persistent Kaggle notebook template and metadata are valid.")
           PY
-          python -m py_compile kaggle/worker.py scripts/prepare_kaggle_notebook.py scripts/process_kaggle_queue.py
+          python -m py_compile kaggle/worker.py kaggle/session_worker.py scripts/prepare_kaggle_notebook.py scripts/process_kaggle_queue.py
