@@ -49,7 +49,7 @@ def push_job(job,folder):
     cli(["kaggle","kernels","push","-p",str(folder),"--timeout","43200"])
 
 def wait():
-    end=time.time()+12*3600
+    end=time.time()+5*3600+45*60
     while time.time()<end:
         r=subprocess.run(["kaggle","kernels","status",KERNEL],capture_output=True,text=True)
         s=(r.stdout+"\n"+r.stderr).strip(); low=s.lower()
