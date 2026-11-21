@@ -15,7 +15,7 @@ jobs:
   process-queue:
     if: github.event_name != 'issues' || github.event.label.name == 'queued'
     runs-on: ubuntu-latest
-    timeout-minutes: 750
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - name: Install Kaggle CLI
