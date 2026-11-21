@@ -3,6 +3,8 @@ on:
   issues:
     types: [labeled]
   workflow_dispatch:
+  repository_dispatch:
+    types: [music-job-queued]
   schedule:
     - cron: "*/10 * * * *"
 permissions:
