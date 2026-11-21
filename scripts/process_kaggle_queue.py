@@ -47,7 +47,7 @@ def push_job(job,folder):
     mp.write_text(json.dumps(meta,indent=2)+"\n")
     os.environ["MUSIC_JOB_JSON"]=json.dumps(job,ensure_ascii=False)
     cli([sys.executable,"scripts/prepare_kaggle_notebook.py",str(folder/"worker.ipynb")])
-    cli(["kaggle","kernels","push","-p",str(folder),"--timeout","43200"])
+    cli(["kaggle","kernels","push","-p",str(folder),"--timeout","43200","--accelerator","NvidiaTeslaT4"])
 
 def wait():
     end=time.time()+5*3600+45*60
@@ -74,24 +74,35 @@ def publish(n,path):
     return asset["browser_download_url"],rel["html_url"]
 
 def process(issue):
-    n=issue["number"]; job=parse(issue)
-    if job is None: return
-    status(n,"processing"); comment(n,"GitHub Actions is launching a one-shot Kaggle GPU run through Kaggle CLI. No GitHub token is sent to Kaggle.")
+    n=issue["number"]
     try:
+        job=parse(issue)
+        if job is None: return
+        status(n,"processing")
+        comment(n,"GitHub Actions is launching a one-shot Kaggle GPU run through Kaggle CLI. No GitHub token is sent to Kaggle.")
         with tempfile.TemporaryDirectory(prefix=f"music-{n}-") as t:
-            folder=Path(t); push_job(job,folder); wait()
-            out=folder/"output"; out.mkdir(exist_ok=True)
+            folder=Path(t)
+            push_job(job,folder)
+            wait()
+            out=folder/"output"
+            out.mkdir(exist_ok=True)
             cli(["kaggle","kernels","output",KERNEL,"-p",str(out),"--force"])
             files=list(out.rglob("*.mp3"))
             if not files: raise RuntimeError("Kaggle completed but returned no MP3 output.")
             mp3=max(files,key=lambda p:p.stat().st_size)
             if mp3.stat().st_size<1024: raise RuntimeError("MP3 output is unexpectedly small.")
             audio,release=publish(n,mp3)
-        comment(n,f"Generation complete.\n\nRESULT_URL: {audio}\n\nRelease: {release}")
-        status(n,"completed"); api(f"/issues/{n}","PATCH",{"state":"closed","state_reason":"completed"})
+        comment(n,f"Generation complete.\\n\\nRESULT_URL: {audio}\\n\\nRelease: {release}")
+        status(n,"completed")
+        api(f"/issues/{n}","PATCH",{"state":"closed","state_reason":"completed"})
     except Exception as e:
         msg=f"Kaggle generation failed: {type(e).__name__}: {e}"
-        comment(n,msg[:4500]); status(n,"failed"); print(msg,file=sys.stderr,flush=True)
+        print(msg,file=sys.stderr,flush=True)
+        try:
+            comment(n,msg[:4500])
+            status(n,"failed")
+        except Exception as report_error:
+            print("Could not report failure to GitHub:",repr(report_error),file=sys.stderr,flush=True)
 
 def main():
     while True:
