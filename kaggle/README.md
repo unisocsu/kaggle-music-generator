@@ -18,3 +18,5 @@ Kaggle sessions are not guaranteed always-on. Pending requests stay in GitHub Is
 
 
 Kaggle CLI 2.x authentication note: KAGGLE_KEY must contain the current Kaggle API token generated from Kaggle Settings > API > Generate New Token. The deployment workflow passes it as KAGGLE_API_TOKEN and writes the CLI access_token file. If you stored an older legacy API key, replace that secret with the current API token value.
+
+Deployment workflow now normalizes whitespace around the Kaggle API token before passing it to the current Kaggle CLI.
