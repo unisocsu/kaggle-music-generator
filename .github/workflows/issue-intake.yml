@@ -6,7 +6,7 @@ on:
 
 permissions:
   issues: write
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -38,4 +38,6 @@ jobs:
               subprocess.run(['gh','label','create',name,'--repo',repo,'--color',color,'--force'],check=True)
           subprocess.run(['gh','issue','edit',number,'--repo',repo,'--add-label','queued'],check=True)
           subprocess.run(['gh','issue','comment',number,'--repo',repo,'--body','Validated and added to the Kaggle queue.'],check=True)
+          # GITHUB_TOKEN-created label events do not start another workflow; dispatch explicitly.
+          subprocess.run(['gh','api',f'repos/{repo}/dispatches','--method','POST','-f','event_type=music-job-queued'],check=True)
           PY
