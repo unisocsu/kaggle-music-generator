@@ -1,0 +1,112 @@
+name: Build ACE-Step.cpp CUDA Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "ACE-Step.cpp branch, tag, or commit to build"
+        required: true
+        default: "master"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-acestep-cuda-release
+  cancel-in-progress: false
+
+jobs:
+  build-linux-cuda:
+    name: Build Linux x86_64 · CUDA 12.8 · T4 (sm_75)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git pkg-config \
+            libopenblas-dev libcurl4-openssl-dev ca-certificates
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          cuda: "12.8.1"
+          method: local
+          linux-local-args: '["--toolkit"]'
+          log-file-suffix: "acestep-cuda-build.txt"
+
+      - name: Checkout ACE-Step.cpp and submodules
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+        run: |
+          git clone --recurse-submodules https://github.com/ServeurpersoCom/acestep.cpp.git acestep.cpp
+          cd acestep.cpp
+          git checkout "$UPSTREAM_REF"
+          git submodule update --init --recursive
+          echo "UPSTREAM_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "UPSTREAM_REF=$UPSTREAM_REF" >> "$GITHUB_ENV"
+
+      - name: Configure CUDA build
+        working-directory: acestep.cpp
+        run: |
+          nvcc --version
+          cmake -S . -B build -G Ninja \
+            -DGGML_CUDA=ON \
+            -DGGML_CUDA_NO_VMM=ON \
+            -DGGML_CUDA_GRAPHS=OFF \
+            -DCMAKE_CUDA_ARCHITECTURES=75 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_RPATH='$ORIGIN' \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+
+      - name: Compile ACE-Step.cpp
+        working-directory: acestep.cpp
+        run: |
+          cmake --build build --parallel 2 --target \
+            ace-server ace-lm ace-synth ace-understand \
+            quantize neural-codec mp3-codec
+
+      - name: Package and verify binaries
+        working-directory: acestep.cpp
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist/acestep-cuda
+          for bin in ace-server ace-lm ace-synth ace-understand quantize neural-codec mp3-codec; do
+            test -x "build/$bin"
+            install -m 0755 "build/$bin" ../dist/acestep-cuda/
+          done
+          find build -maxdepth 1 -type f -name '*.so*' -exec cp -P {} ../dist/acestep-cuda/ \;
+          install -m 0644 LICENSE ../dist/acestep-cuda/LICENSE
+          cat > ../dist/acestep-cuda/build-info.txt <<EOF
+          Project: ServeurpersoCom/acestep.cpp
+          Upstream ref: $UPSTREAM_REF
+          Upstream commit: $UPSTREAM_SHA
+          Target: Linux x86_64
+          CUDA toolkit: 12.8.1
+          CUDA architecture: sm_75 (NVIDIA T4)
+          GGML_CUDA_NO_VMM: ON
+          GGML_CUDA_GRAPHS: OFF
+          EOF
+          file ../dist/acestep-cuda/ace-server
+          ldd ../dist/acestep-cuda/ace-server | tee ../dist/acestep-cuda/ldd-ace-server.txt
+          if grep -q "not found" ../dist/acestep-cuda/ldd-ace-server.txt; then
+            echo "Unresolved shared library dependency detected."
+            exit 1
+          fi
+          tar -C ../dist -czf ../acestep-cuda-linux-x86_64-cuda12.8-sm75.tar.gz acestep-cuda
+          sha256sum ../acestep-cuda-linux-x86_64-cuda12.8-sm75.tar.gz \
+            | tee ../acestep-cuda-linux-x86_64-cuda12.8-sm75.tar.gz.sha256
+
+      - name: Create GitHub Release and upload build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="acestep-cuda-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          gh release create "$TAG" \
+            "acestep-cuda-linux-x86_64-cuda12.8-sm75.tar.gz" \
+            "acestep-cuda-linux-x86_64-cuda12.8-sm75.tar.gz.sha256" \
+            --title "ACE-Step.cpp CUDA build ${GITHUB_RUN_NUMBER}" \
+            --notes "Prebuilt Linux x86_64 ACE-Step.cpp binaries for NVIDIA T4 (sm_75). Built from upstream commit $UPSTREAM_SHA with CUDA 12.8.1 and GGML_CUDA_NO_VMM=ON. Model weights are not included."
