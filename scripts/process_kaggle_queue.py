@@ -27,7 +27,8 @@ def parse(issue):
     body=issue.get("body") or ""
     if "<!-- music-job-v1 -->" not in body: return None
     tail=body.split("<!-- music-job-v1 -->",1)[1]
-    m=re.search(r"\\`\\`\\`json\\s*(.*?)\\s*\\`\\`\\`",tail,re.S)
+    fence=chr(96)*3
+    m=re.search(re.escape(fence)+r"json\s*(.*?)\s*"+re.escape(fence),tail,re.S)
     if not m: raise ValueError("No JSON request block in issue.")
     job=json.loads(m.group(1))
     if job.get("schema_version")!=1 or job.get("type")!="music_generation" or not str(job.get("prompt","")).strip():
@@ -59,7 +60,7 @@ def wait():
             raise RuntimeError("Kaggle execution failed: "+s[-2500:])
         if r.returncode and not s: raise RuntimeError("Could not retrieve Kaggle kernel status.")
         time.sleep(POLL)
-    raise TimeoutError("Kaggle run exceeded 12 hours.")
+    raise TimeoutError("Kaggle run exceeded the GitHub Actions polling window.")
 
 def publish(n,path):
     tag=f"music-job-{n}"
