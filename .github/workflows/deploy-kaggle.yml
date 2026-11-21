@@ -19,7 +19,7 @@ jobs:
 
       - name: Configure Kaggle API token
         env:
-          KAGGLE_KEY: \${{ secrets.KAGGLE_KEY }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           test -n "$KAGGLE_KEY" || (echo "Missing KAGGLE_KEY secret" && exit 1)
           mkdir -p "$HOME/.kaggle"
@@ -31,7 +31,7 @@ jobs:
 
       - name: Prepare Kaggle notebook metadata
         env:
-          KAGGLE_USER_NAME: \${{ secrets.KAGGLE_USER_NAME }}
+          KAGGLE_USER_NAME: ${{ secrets.KAGGLE_USER_NAME }}
         run: |
           test -n "$KAGGLE_USER_NAME" || (echo "Missing KAGGLE_USER_NAME secret" && exit 1)
           python - <<'PY'
