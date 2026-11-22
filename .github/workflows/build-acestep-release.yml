@@ -78,7 +78,21 @@ jobs:
             test -x "build/$bin"
             install -m 0755 "build/$bin" ../dist/acestep-cuda/
           done
-          find build -maxdepth 1 -type f -name '*.so*' -exec cp -P {} ../dist/acestep-cuda/ \;
+          # GGML shared libraries are emitted in nested build directories
+          # (for example build/ggml/src), not only in build/.
+          find build \\( -type f -o -type l \\) -name '*.so*' \\
+            -exec cp -a -t ../dist/acestep-cuda/ {} +
+
+          # Keep the packaged binaries able to resolve the colocated GGML libraries.
+          cat > ../dist/acestep-cuda/run-ace-server.sh <<'RUNNER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+          export LD_LIBRARY_PATH="$HERE${CUDA_PATH:+:$CUDA_PATH/lib64}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          exec "$HERE/ace-server" "$@"
+          RUNNER
+          chmod 0755 ../dist/acestep-cuda/run-ace-server.sh
+
           install -m 0644 LICENSE ../dist/acestep-cuda/LICENSE
           cat > ../dist/acestep-cuda/build-info.txt <<EOF
           Project: ServeurpersoCom/acestep.cpp
@@ -91,9 +105,12 @@ jobs:
           GGML_CUDA_GRAPHS: OFF
           EOF
           file ../dist/acestep-cuda/ace-server
+          export LD_LIBRARY_PATH="../dist/acestep-cuda:${CUDA_PATH}/lib64:${LD_LIBRARY_PATH:-}"
           ldd ../dist/acestep-cuda/ace-server | tee ../dist/acestep-cuda/ldd-ace-server.txt
           if grep -q "not found" ../dist/acestep-cuda/ldd-ace-server.txt; then
             echo "Unresolved shared library dependency detected."
+            echo "Packaged libraries:"
+            find ../dist/acestep-cuda -maxdepth 1 -type f -o -type l
             exit 1
           fi
           tar -C ../dist -czf ../acestep-cuda-linux-x86_64-cuda12.8-sm75.tar.gz acestep-cuda
