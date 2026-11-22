@@ -80,7 +80,7 @@ jobs:
           done
           # GGML shared libraries are emitted in nested build directories
           # (for example build/ggml/src), not only in build/.
-          find build \\( -type f -o -type l \\) -name '*.so*' \\
+          find build \( -type f -o -type l \) -name '*.so*' \
             -exec cp -a -t ../dist/acestep-cuda/ {} +
 
           # Keep the packaged binaries able to resolve the colocated GGML libraries.
