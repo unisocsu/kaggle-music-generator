@@ -38,7 +38,8 @@ def start_server():
     log = log_path.open("w", encoding="utf-8")
     proc = subprocess.Popen(
         [str(binary), "--models", str(MODELS), "--device", "CUDA0",
-         "--host", "127.0.0.1", "--port", "8085", "--keep-loaded"],
+         "--vae-chunk", "256", "--vae-overlap", "32",
+         "--host", "127.0.0.1", "--port", "8085"],
         cwd=str(ENGINE), stdout=log, stderr=subprocess.STDOUT, env=os.environ.copy()
     )
     deadline = time.monotonic() + 180
