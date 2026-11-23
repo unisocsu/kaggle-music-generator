@@ -67,7 +67,19 @@ def wait_server_job(job_id, timeout_seconds=3 * 60 * 60):
         status = state.get("status")
         if status == "done": return
         if status in ("failed", "cancelled"):
-            raise RuntimeError("ACE-Step job " + str(job_id) + " ended as " + status)
+            diagnostics = {"state": state}
+            try:
+                result, _ = server_json("/job?id=" + urllib.parse.quote(str(job_id)) + "&result=1", timeout=30)
+                diagnostics["result"] = result
+            except Exception as exc:
+                diagnostics["result_error"] = type(exc).__name__ + ": " + str(exc)
+            log_path = Path("/kaggle/working/ace-server.log")
+            if log_path.is_file():
+                diagnostics["server_log_tail"] = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
+            raise RuntimeError(
+                "ACE-Step job " + str(job_id) + " ended as " + status + "; diagnostics="
+                + json.dumps(diagnostics, ensure_ascii=False, default=str)[:9000]
+            )
         time.sleep(3)
     raise TimeoutError("ACE-Step job timed out: " + str(job_id))
 
