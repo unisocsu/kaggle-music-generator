@@ -10,7 +10,7 @@ API_BASE = "https://api.github.com/repos/{repo}/issues"
 SERVER = "http://127.0.0.1:8085"
 ENGINE = Path("/kaggle/working/acestep.cpp")
 MODELS = ENGINE / "models"
-OUTPUT = Path("/kaggle/working/output")
+OUTPUT = Path("/kaggle/working")  # Kaggle publishes files saved directly in working as kernel outputs.
 LM_MODEL = "acestep-5Hz-lm-4B-Q8_0.gguf"
 DIT_MODEL = "acestep-v15-turbo-Q8_0.gguf"
 
