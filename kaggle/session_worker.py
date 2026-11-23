@@ -11,8 +11,8 @@ SERVER = "http://127.0.0.1:8085"
 ENGINE = Path("/kaggle/working/acestep.cpp")
 MODELS = ENGINE / "models"
 OUTPUT = Path("/kaggle/working/output")
-LM_MODEL = "acestep-5Hz-lm-4B-Q8_0"
-DIT_MODEL = "acestep-v15-turbo-Q8_0"
+LM_MODEL = "acestep-5Hz-lm-4B-Q8_0.gguf"
+DIT_MODEL = "acestep-v15-turbo-Q8_0.gguf"
 
 
 def request(url, method="GET", payload=None, headers=None, timeout=60):
