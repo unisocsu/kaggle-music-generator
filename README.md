@@ -7,7 +7,7 @@ GitHub Pages frontend + GitHub Issues queue + GitHub Actions orchestrator + a lo
 1. Pages creates a public GitHub Issue containing a versioned JSON music request.
 2. GitHub Actions validates the request and applies the queued label.
 3. GitHub Actions starts one Kaggle notebook run using Kaggle CLI.
-4. The Kaggle notebook builds ACE-Step, downloads the Q8_0 models, and starts ace-server with keep-loaded enabled.
+4. The Kaggle notebook downloads the Q8_0 models and starts one long-lived ace-server process. The frontend can start an idle engine session explicitly, before any song is submitted.
 5. During the active run, Kaggle checks public Issues anonymously for new queued requests. It prints machine-readable log events such as KAGGLE_SEEN:123, KAGGLE_DONE:123, and KAGGLE_FAILED:123.
 6. GitHub Actions follows live Kaggle logs with kaggle kernels logs --follow. When it sees KAGGLE_SEEN, it adds the processing label and comments that the request was received.
 7. The persistent ACE-Step HTTP server accepts /lm and /synth requests in sequence. Its keep-loaded mode retains model weights between requests.
@@ -26,7 +26,7 @@ The GitHub Actions workflow uses its automatically provided github.token for rep
 
 In Settings > Pages, choose Deploy from a branch, branch main, folder /docs.
 
-The existing frontend may ask the user for a GitHub token to create Issues directly through GitHub's API. That token is used by the browser only and is not sent to Kaggle. Removing the frontend token would require a server-side submission endpoint.
+The frontend stores the user's GitHub token in browser localStorage and uses it directly for GitHub Issues API calls. The token is not sent to Kaggle. Use a fine-grained token restricted to this repository with Issues read/write permission. Anyone with access to this browser profile can access the saved token; use the disconnect button to remove it.
 
 ## Run
 
@@ -64,10 +64,10 @@ The Q8_0 essentials model set is approximately 7.7 GB on disk. keep-loaded keeps
 
 ## Layout
 
-- docs/: GitHub Pages frontend.
+- docs/: Chat-style GitHub Pages frontend with local token persistence, recent-song sidebar, and an explicit Start Engine control.
 - .github/workflows/issue-intake.yml: validates and queues new requests.
 - .github/workflows/run-kaggle-job.yml: starts Kaggle, follows live logs, downloads MP3s and publishes releases.
 - kaggle/notebook/: Kaggle notebook template and metadata.
-- kaggle/session_worker.py: anonymous Issues poller and ACE-Step HTTP API client.
+- kaggle/session_worker.py: anonymous Issues poller, engine-start control handler, and ACE-Step HTTP API client.
 - kaggle/worker.py: previous one-shot CLI worker, retained for reference.
 - scripts/process_kaggle_queue.py: GitHub Actions session manager and Release publisher.
