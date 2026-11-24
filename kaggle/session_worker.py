@@ -239,6 +239,7 @@ def main():
     parser.add_argument("--repo", required=True)
     parser.add_argument("--poll-seconds", type=int, default=15)
     # Keep the GPU session warm so the user can submit several songs without restarting it.
+    # The matching GitHub Pages frontend is validated in the same CI workflow.
     parser.add_argument("--idle-seconds", type=int, default=900)
     parser.add_argument("--max-seconds", type=int, default=5 * 60 * 60 + 35 * 60)
     args = parser.parse_args()
