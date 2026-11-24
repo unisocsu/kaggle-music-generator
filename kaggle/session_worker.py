@@ -238,7 +238,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True)
     parser.add_argument("--poll-seconds", type=int, default=15)
-    parser.add_argument("--idle-seconds", type=int, default=180)
+    parser.add_argument("--idle-seconds", type=int, default=900)
     parser.add_argument("--max-seconds", type=int, default=5 * 60 * 60 + 35 * 60)
     args = parser.parse_args()
     if "/" not in args.repo or args.repo.startswith("/") or args.repo.endswith("/"):
