@@ -169,6 +169,8 @@ def get_queued_issues(repo, etag):
 
 def parse_issue(issue):
     body = issue.get("body") or ""
+    if "<!-- music-session-start-v1 -->" in body:
+        return {"issue_number": int(issue["number"]), "_session_start": True}
     if "<!-- music-job-v1 -->" not in body: return None
     tail = body.split("<!-- music-job-v1 -->", 1)[1]
     match = re.search(r"\`\`\`json\s*(.*?)\s*\`\`\`", tail, re.S)
@@ -208,6 +210,9 @@ def run_session(repo, poll_seconds, idle_seconds, max_seconds):
                         job = parse_issue(issue)
                         if job is None:
                             print(f"KAGGLE_FAILED:{n}:Missing music-job marker", flush=True)
+                            continue
+                        if job.get("_session_start"):
+                            print(f"KAGGLE_ENGINE_READY:{n}", flush=True)
                             continue
                         generate(job)
                     except Exception as exc:
