@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   validate:
-    if: contains(github.event.issue.body, '<!-- music-job-v1 -->')
+    if: contains(github.event.issue.body, '<!-- music-job-v1 -->') || contains(github.event.issue.body, '<!-- music-session-start-v1 -->')
     runs-on: ubuntu-latest
     steps:
       - name: Validate and queue request
@@ -21,23 +21,27 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           python - <<'PY'
-          import json, os, subprocess, sys
+          import json, os, subprocess
           repo=os.environ['REPO']; number=os.environ['ISSUE_NUMBER']; body=os.environ.get('ISSUE_BODY','')
           try:
-              raw=body.split('```json',1)[1].split('```',1)[0].strip()
-              job=json.loads(raw)
-              assert job.get('schema_version') == 1
-              assert job.get('type') == 'music_generation'
-              assert isinstance(job.get('prompt'), str) and job['prompt'].strip()
-              assert 30 <= int(job.get('duration_seconds',0)) <= 300
-          except Exception as exc:
-              subprocess.run(['gh','issue','comment',number,'--repo',repo,'--body','Rejected: invalid music job request.'],check=True)
+              if '<!-- music-session-start-v1 -->' in body:
+                  pass
+              elif '<!-- music-job-v1 -->' in body:
+                  raw=body.split('```json',1)[1].split('```',1)[0].strip()
+                  job=json.loads(raw)
+                  assert job.get('schema_version') == 1
+                  assert job.get('type') == 'music_generation'
+                  assert isinstance(job.get('prompt'), str) and job['prompt'].strip()
+                  assert 30 <= int(job.get('duration_seconds',0)) <= 300
+              else:
+                  raise ValueError('Unknown request type')
+          except Exception:
+              subprocess.run(['gh','issue','comment',number,'--repo',repo,'--body','Rejected: invalid music request.'],check=True)
               subprocess.run(['gh','issue','close',number,'--repo',repo],check=True)
               raise
           for name,color in [('queued','1d76db'),('processing','fbca04'),('completed','0e8a16'),('failed','d73a4a')]:
               subprocess.run(['gh','label','create',name,'--repo',repo,'--color',color,'--force'],check=True)
           subprocess.run(['gh','issue','edit',number,'--repo',repo,'--add-label','queued'],check=True)
           subprocess.run(['gh','issue','comment',number,'--repo',repo,'--body','Validated and added to the Kaggle queue.'],check=True)
-          # GITHUB_TOKEN-created label events do not start another workflow; dispatch explicitly.
           subprocess.run(['gh','api',f'repos/{repo}/dispatches','--method','POST','-f','event_type=music-job-queued'],check=True)
           PY
