@@ -68,7 +68,16 @@ def push_session(folder):
     cli(["kaggle", "kernels", "push", "-p", str(folder), "--timeout", "21600", "--accelerator", "NvidiaTeslaT4"])
 
 
-def process_log_line(line, announced, failed):
+def process_log_line(line, announced, failed, engine_sessions):
+    match = re.search(r"KAGGLE_ENGINE_READY:(\d+)", line)
+    if match:
+        number = int(match.group(1))
+        engine_sessions.add(number)
+        try:
+            set_status(number, "processing")
+            comment(number, "מנוע ACE-Step הופעל והסשן מוכן. אפשר לשלוח כמה בקשות שירים ברצף; המנוע יישאר פעיל בזמן השימוש.")
+        except Exception as exc:
+            print(f"Could not acknowledge engine session #{number}: {exc}", file=sys.stderr, flush=True)
     match = re.search(r"KAGGLE_SEEN:(\d+)", line)
     if match:
         number = int(match.group(1))
@@ -112,7 +121,7 @@ def kernel_status():
     return status_text, result.returncode
 
 
-def follow_logs(announced, failed):
+def follow_logs(announced, failed, engine_sessions):
     # Kaggle's current CLI uses an SSE stream for --follow. Its stream endpoint
     # can transiently return HTTP 500 while a newly pushed kernel is QUEUED.
     # Reconnect instead of treating that temporary stream failure as a failed run.
@@ -129,7 +138,7 @@ def follow_logs(announced, failed):
         try:
             for line in process.stdout:
                 print("[KAGGLE] " + line.rstrip(), flush=True)
-                process_log_line(line, announced, failed)
+                process_log_line(line, announced, failed, engine_sessions)
         finally:
             if process.stdout:
                 process.stdout.close()
@@ -183,17 +192,17 @@ def main():
         return
     if not USER:
         raise RuntimeError("Missing KAGGLE_USER_NAME secret.")
-    announced, failed = set(), set()
+    announced, failed, engine_sessions = set(), set(), set()
     with tempfile.TemporaryDirectory(prefix="kaggle-music-session-") as temp:
         notebook_folder = Path(temp)
         push_session(notebook_folder)
-        follow_logs(announced, failed)
+        follow_logs(announced, failed, engine_sessions)
         output = notebook_folder / "output"
         output.mkdir(exist_ok=True)
         cli(["kaggle", "kernels", "output", KERNEL, "-p", str(output), "--force"])
         mp3_files = sorted(output.rglob("song-*.mp3"))
-        if not mp3_files:
-            raise RuntimeError("Kaggle session completed but returned no song-*.mp3 files.")
+        if not mp3_files and not engine_sessions:
+            raise RuntimeError("Kaggle session completed but returned no song-*.mp3 files and no engine-start event.")
         for audio in mp3_files:
             match = re.fullmatch(r"song-(\d+)(?:-\d+)?\.mp3", audio.name)
             if not match:
@@ -215,6 +224,13 @@ def main():
             set_status(number, "completed")
             api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
             print(f"Published issue #{number}: {url}", flush=True)
+        for number in engine_sessions:
+            try:
+                comment(number, "סשן המנוע הסתיים. להפעלה מחדש לחץ שוב על ״הפעל מנוע״.")
+                set_status(number, "completed")
+                api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
+            except Exception as exc:
+                print(f"Could not close engine session issue #{number}: {exc}", file=sys.stderr, flush=True)
     print("Kaggle session queue processing complete.")
 
 
