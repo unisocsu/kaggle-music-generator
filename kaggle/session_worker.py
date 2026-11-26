@@ -13,14 +13,22 @@ MODELS = ENGINE / "models"
 OUTPUT = Path("/kaggle/working")  # Kaggle publishes files saved directly in working as kernel outputs.
 
 
+_GITHUB_TOKEN = None
+_GITHUB_TOKEN_CHECKED = False
+
+
 def github_token():
     """Read a private token from Kaggle Secrets; never embed it in the notebook."""
+    global _GITHUB_TOKEN, _GITHUB_TOKEN_CHECKED
+    if _GITHUB_TOKEN_CHECKED:
+        return _GITHUB_TOKEN
+    _GITHUB_TOKEN_CHECKED = True
     try:
         from kaggle_secrets import UserSecretsClient
-        return UserSecretsClient().get_secret("GITHUB_TOKEN")
+        _GITHUB_TOKEN = UserSecretsClient().get_secret("GITHUB_TOKEN")
     except Exception as exc:
         print("KAGGLE_LIVE_UPLOAD_DISABLED: add Kaggle secret GITHUB_TOKEN (" + type(exc).__name__ + ")", flush=True)
-        return None
+    return _GITHUB_TOKEN
 
 
 def github_api(url, method="GET", payload=None, raw=None, content_type="application/json"):
