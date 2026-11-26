@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+      - name: Validate Python sources
+        run: python -m py_compile scripts/process_kaggle_queue.py kaggle/session_worker.py
       - name: Install Kaggle CLI
         run: |
           python -m pip install --upgrade pip
