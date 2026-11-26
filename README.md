@@ -44,7 +44,7 @@ The workflow is serialized so only one Kaggle GPU session is submitted at a time
 The notebook builds ace-server and starts it with:
 
 - Device CUDA0
-- keep-loaded enabled
+- Default memory policy; model components load as needed
 - Host 127.0.0.1, port 8085
 
 The server exposes asynchronous /lm and /synth endpoints and a FIFO job queue. The session worker polls each job status and fetches its result. This keeps the model store alive in one process across song requests, instead of starting ace-lm and ace-synth for every song.
@@ -62,7 +62,7 @@ The server process remains alive between requests, while model components are lo
 - Requests are serialized by the ACE-Step server FIFO worker thread.
 - Completed MP3 files are uploaded to GitHub Releases immediately from Kaggle; end-of-session output collection remains as a recovery path.
 
-The Q8_0 essentials model set is approximately 7.7 GB on disk. keep-loaded keeps loaded modules resident in GPU memory; verify actual memory use and successful first generation on the selected Kaggle accelerator before relying on long sessions.
+The Q8_0 essentials model set is approximately 7.7 GB on disk. The server process stays alive between requests, but its default memory policy is retained to avoid forcing all model components to remain resident in T4 VRAM.
 
 ## Layout
 
