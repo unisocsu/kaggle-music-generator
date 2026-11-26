@@ -92,20 +92,20 @@ def process_log_line(line, announced, failed, engine_sessions):
     if match:
         number = int(match.group(1))
         try:
-            comment(number, "היצירה הסתיימה ב־Kaggle. מעביר כעת את הקובץ ל־GitHub.")
+            comment(number, "היצירה הסתיימה ב־Kaggle. בודק כעת את ההעלאה המיידית ל־GitHub.")
         except Exception as exc:
             print(f"Could not update issue #{number}: {exc}", file=sys.stderr, flush=True)
-    match = re.search(r"KAGGLE_PUBLISHED:(\\d+):(https://\\S+)", line)
+    match = re.search(r"KAGGLE_PUBLISHED:(\d+):(https://\S+)", line)
     if match:
         number, url = int(match.group(1)), match.group(2)
         try:
             issue = api(f"/issues/{number}")
             body = issue.get("body") or ""
-            body = re.sub(r"\\n*RESULT_URL:\\s*https://\\S+\\s*$", "", body)
-            body += f"\\n\\nRESULT_URL: {url}\\n"
+            body = re.sub(r"\n*RESULT_URL:\s*https://\S+\s*$", "", body)
+            body += f"\n\nRESULT_URL: {url}\n"
             api(f"/issues/{number}", "PATCH", {"body": body})
             set_status(number, "completed")
-            comment(number, f"השיר מוכן! 🎵\\n\\n[האזנה / הורדה]({url})")
+            comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})")
             api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
             print(f"Published issue #{number} immediately from Kaggle: {url}", flush=True)
         except Exception as exc:
