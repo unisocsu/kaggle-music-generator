@@ -92,9 +92,24 @@ def process_log_line(line, announced, failed, engine_sessions):
     if match:
         number = int(match.group(1))
         try:
-            comment(number, "היצירה הסתיימה בהצלחה. אני מוריד כעת את קובץ השיר ומעלה אותו ל־GitHub Releases.")
+            comment(number, "היצירה הסתיימה ב־Kaggle. מעביר כעת את הקובץ ל־GitHub.")
         except Exception as exc:
             print(f"Could not update issue #{number}: {exc}", file=sys.stderr, flush=True)
+    match = re.search(r"KAGGLE_PUBLISHED:(\\d+):(https://\\S+)", line)
+    if match:
+        number, url = int(match.group(1)), match.group(2)
+        try:
+            issue = api(f"/issues/{number}")
+            body = issue.get("body") or ""
+            body = re.sub(r"\\n*RESULT_URL:\\s*https://\\S+\\s*$", "", body)
+            body += f"\\n\\nRESULT_URL: {url}\\n"
+            api(f"/issues/{number}", "PATCH", {"body": body})
+            set_status(number, "completed")
+            comment(number, f"השיר מוכן! 🎵\\n\\n[האזנה / הורדה]({url})")
+            api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
+            print(f"Published issue #{number} immediately from Kaggle: {url}", flush=True)
+        except Exception as exc:
+            print(f"Could not finalize live-published issue #{number}: {exc}", file=sys.stderr, flush=True)
     match = re.search(r"KAGGLE_FAILED:(\d+):(.+)", line)
     if match:
         number = int(match.group(1))
@@ -170,6 +185,10 @@ def follow_logs(announced, failed, engine_sessions):
 def publish(number, audio_path):
     tag = f"music-job-{number}"
     try:
+        release = api("/releases/tags/" + tag)
+    except RuntimeError as exc:
+        if "404" not in str(exc):
+            raise
         release = api("/releases", "POST", {
             "tag_name": tag,
             "name": f"Generated music - Issue #{number}",
@@ -177,10 +196,9 @@ def publish(number, audio_path):
             "draft": False,
             "prerelease": True
         })
-    except RuntimeError as exc:
-        if "422" not in str(exc):
-            raise
-        release = api("/releases/tags/" + tag)
+    existing = next((item for item in release.get("assets", []) if item.get("name") == audio_path.name), None)
+    if existing:
+        return existing["browser_download_url"], release["html_url"]
     upload_url = release["upload_url"].split("{", 1)[0] + "?name=" + audio_path.name
     asset = api("", "POST", raw=audio_path.read_bytes(), content_type="audio/mpeg", url=upload_url)
     return asset["browser_download_url"], release["html_url"]
@@ -215,15 +233,16 @@ def main():
                 comment(number, "הקובץ שהוחזר מ־Kaggle קטן מדי ולכן לא פורסם.")
                 continue
             url, release_url = publish(number, audio)
-            comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})\n\n[GitHub Release]({release_url})")
             issue = api(f"/issues/{number}")
             issue_body = issue.get("body") or ""
-            issue_body = re.sub(r"\n*RESULT_URL:\s*https://\S+\s*$", "", issue_body)
-            issue_body += f"\n\nRESULT_URL: {url}\n"
-            api(f"/issues/{number}", "PATCH", {"body": issue_body})
+            already_recorded = f"RESULT_URL: {url}" in issue_body
+            if not already_recorded:
+                comment(number, f"השיר מוכן! 🎵\\n\\n[האזנה / הורדה]({url})\\n\\n[GitHub Release]({release_url})")
+                issue_body = re.sub(r"\\n*RESULT_URL:\\s*https://\\S+\\s*$", "", issue_body)
+                issue_body += f"\\n\\nRESULT_URL: {url}\\n"
+                api(f"/issues/{number}", "PATCH", {"body": issue_body})
             set_status(number, "completed")
             api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
-            print(f"Published issue #{number}: {url}", flush=True)
         for number in engine_sessions:
             try:
                 comment(number, "סשן המנוע הסתיים. להפעלה מחדש לחץ שוב על ״הפעל מנוע״.")
