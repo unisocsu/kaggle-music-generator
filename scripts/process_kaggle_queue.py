@@ -2,6 +2,7 @@
 import json, os, re, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 from urllib.error import HTTPError
 
 REPO = os.environ["GITHUB_REPOSITORY"]
@@ -68,7 +69,7 @@ def push_session(folder):
     cli(["kaggle", "kernels", "push", "-p", str(folder), "--timeout", "21600", "--accelerator", "NvidiaTeslaT4"])
 
 
-def process_log_line(line, announced, failed, engine_sessions):
+def process_log_line(line, announced, failed, engine_sessions, published):
     match = re.search(r"KAGGLE_ENGINE_READY:(\d+)", line)
     if match:
         number = int(match.group(1))
@@ -95,21 +96,21 @@ def process_log_line(line, announced, failed, engine_sessions):
             comment(number, "היצירה הסתיימה ב־Kaggle. בודק כעת את ההעלאה המיידית ל־GitHub.")
         except Exception as exc:
             print(f"Could not update issue #{number}: {exc}", file=sys.stderr, flush=True)
-    match = re.search(r"KAGGLE_PUBLISHED:(\d+):(https://\S+)", line)
+    match = re.search(r"KAGGLE_TEMP_URL:(\\d+):(https://\\S+)", line)
     if match:
-        number, url = int(match.group(1)), match.group(2)
-        try:
-            issue = api(f"/issues/{number}")
-            body = issue.get("body") or ""
-            body = re.sub(r"\n*RESULT_URL:\s*https://\S+\s*$", "", body)
-            body += f"\n\nRESULT_URL: {url}\n"
-            api(f"/issues/{number}", "PATCH", {"body": body})
-            set_status(number, "completed")
-            comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})")
-            api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
-            print(f"Published issue #{number} immediately from Kaggle: {url}", flush=True)
-        except Exception as exc:
-            print(f"Could not finalize live-published issue #{number}: {exc}", file=sys.stderr, flush=True)
+        number, temp_url = int(match.group(1)), match.group(2)
+        if number not in published:
+            try:
+                url, release_url = download_temp_and_publish(number, temp_url)
+                finalize_published_issue(number, url, release_url)
+                published.add(number)
+                print(f"Published issue #{number} from TempFile.org to GitHub Release: {url}", flush=True)
+            except Exception as exc:
+                print(f"Could not publish temporary upload for issue #{number}: {exc}", file=sys.stderr, flush=True)
+                try:
+                    comment(number, "העלאת השיר לשרת הזמני הצליחה, אך הפרסום ב־GitHub נכשל. אנסה לפרסם את קובץ הפלט של Kaggle בסיום הסשן. פרטים: " + str(exc)[:500])
+                except Exception:
+                    pass
     match = re.search(r"KAGGLE_FAILED:(\d+):(.+)", line)
     if match:
         number = int(match.group(1))
@@ -136,7 +137,7 @@ def kernel_status():
     return status_text, result.returncode
 
 
-def follow_logs(announced, failed, engine_sessions):
+def follow_logs(announced, failed, engine_sessions, published):
     # Kaggle's current CLI uses an SSE stream for --follow. Its stream endpoint
     # can transiently return HTTP 500 while a newly pushed kernel is QUEUED.
     # Reconnect instead of treating that temporary stream failure as a failed run.
@@ -153,7 +154,7 @@ def follow_logs(announced, failed, engine_sessions):
         try:
             for line in process.stdout:
                 print("[KAGGLE] " + line.rstrip(), flush=True)
-                process_log_line(line, announced, failed, engine_sessions)
+                process_log_line(line, announced, failed, engine_sessions, published)
         finally:
             if process.stdout:
                 process.stdout.close()
@@ -204,17 +205,58 @@ def publish(number, audio_path):
     return asset["browser_download_url"], release["html_url"]
 
 
+def finalize_published_issue(number, url, release_url):
+    issue = api(f"/issues/{number}")
+    body = issue.get("body") or ""
+    if f"RESULT_URL: {url}" not in body:
+        body = re.sub(r"\\n*RESULT_URL:\\s*https://\\S+\\s*$", "", body)
+        body += f"\\n\\nRESULT_URL: {url}\\n"
+        api(f"/issues/{number}", "PATCH", {"body": body})
+        comment(number, f"השיר מוכן! 🎵\\n\\n[האזנה / הורדה]({url})\\n\\n[GitHub Release]({release_url})")
+    set_status(number, "completed")
+    api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
+
+
+def download_temp_and_publish(number, temp_url):
+    parsed = urlparse(temp_url)
+    if parsed.scheme != "https" or parsed.hostname != "tempfile.org":
+        raise ValueError("Rejected temporary upload URL: unexpected host or scheme")
+    match = re.fullmatch(r"/([A-Za-z0-9]{11})/?", parsed.path)
+    if not match:
+        raise ValueError("Rejected temporary upload URL: invalid file identifier")
+    download_url = f"https://tempfile.org/{match.group(1)}/download"
+    target = Path(tempfile.gettempdir()) / f"kaggle-music-song-{number}.mp3"
+    total = 0
+    try:
+        with urlopen(Request(download_url, headers={"User-Agent": "actions-kaggle-session"}), timeout=300) as response:
+            with target.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > 100 * 1024 * 1024:
+                        raise RuntimeError("Temporary MP3 exceeded the 100MB download limit")
+                    output.write(chunk)
+        if total < 1024:
+            raise RuntimeError(f"Temporary MP3 download was too small ({total} bytes)")
+        release_url, page_url = publish(number, target)
+        return release_url, page_url
+    finally:
+        target.unlink(missing_ok=True)
+
+
 def main():
     if not queued_issues():
         print("No queued music issues; no Kaggle session needed.")
         return
     if not USER:
         raise RuntimeError("Missing KAGGLE_USER_NAME secret.")
-    announced, failed, engine_sessions = set(), set(), set()
+    announced, failed, engine_sessions, published = set(), set(), set(), set()
     with tempfile.TemporaryDirectory(prefix="kaggle-music-session-") as temp:
         notebook_folder = Path(temp)
         push_session(notebook_folder)
-        follow_logs(announced, failed, engine_sessions)
+        follow_logs(announced, failed, engine_sessions, published)
         output = notebook_folder / "output"
         output.mkdir(exist_ok=True)
         cli(["kaggle", "kernels", "output", KERNEL, "-p", str(output), "--force"])
