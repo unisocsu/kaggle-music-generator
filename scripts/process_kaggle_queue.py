@@ -209,7 +209,7 @@ def finalize_published_issue(number, url, release_url):
     issue = api(f"/issues/{number}")
     body = issue.get("body") or ""
     if f"RESULT_URL: {url}" not in body:
-        body = re.sub(r"\n*RESULT_URL:\\s*https://\S+\\s*$", "", body)
+        body = re.sub(r"\n*RESULT_URL:\s*https://\S+\s*$", "", body)
         body += f"\n\nRESULT_URL: {url}\n"
         api(f"/issues/{number}", "PATCH", {"body": body})
         comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})\n\n[GitHub Release]({release_url})")
@@ -280,7 +280,7 @@ def main():
             already_recorded = f"RESULT_URL: {url}" in issue_body
             if not already_recorded:
                 comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})\n\n[GitHub Release]({release_url})")
-                issue_body = re.sub(r"\n*RESULT_URL:\\s*https://\S+\\s*$", "", issue_body)
+                issue_body = re.sub(r"\n*RESULT_URL:\s*https://\S+\s*$", "", issue_body)
                 issue_body += f"\n\nRESULT_URL: {url}\n"
                 api(f"/issues/{number}", "PATCH", {"body": issue_body})
             set_status(number, "completed")
