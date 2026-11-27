@@ -157,8 +157,11 @@ def make_request(job):
     lyrics = "[Instrumental]" if job.get("instrumental") else str(job.get("lyrics") or "").strip()
     try: seed = int(job.get("seed")) if job.get("seed") not in (None, "", -1, "-1") else -1
     except (TypeError, ValueError): seed = -1
+    genre = str(job.get("genre") or "").strip()
+    prompt = str(job.get("prompt") or "").strip()
+    caption = (f"Genre: {genre}. " if genre else "") + prompt
     return {
-        "task_type": "text2music", "caption": str(job.get("prompt") or "").strip()[:2000],
+        "task_type": "text2music", "caption": caption[:2000],
         "lyrics": lyrics[:12000], "duration": duration, "vocal_language": language, "seed": seed,
         "lm_batch_size": 1, "synth_batch_size": 1, "inference_steps": 8, "shift": 3.0,
         "solver": "euler", "output_format": "mp3", "mp3_bitrate": 192, "lm_mode": "generate",
