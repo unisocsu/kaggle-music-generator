@@ -96,7 +96,7 @@ def process_log_line(line, announced, failed, engine_sessions, published):
             comment(number, "היצירה הסתיימה ב־Kaggle. בודק כעת את ההעלאה המיידית ל־GitHub.")
         except Exception as exc:
             print(f"Could not update issue #{number}: {exc}", file=sys.stderr, flush=True)
-    match = re.search(r"KAGGLE_TEMP_URL:(\\d+):(https://\\S+)", line)
+    match = re.search(r"KAGGLE_TEMP_URL:(\d+):(https://\S+)", line)
     if match:
         number, temp_url = int(match.group(1)), match.group(2)
         if number not in published:
@@ -209,10 +209,10 @@ def finalize_published_issue(number, url, release_url):
     issue = api(f"/issues/{number}")
     body = issue.get("body") or ""
     if f"RESULT_URL: {url}" not in body:
-        body = re.sub(r"\\n*RESULT_URL:\\s*https://\\S+\\s*$", "", body)
-        body += f"\\n\\nRESULT_URL: {url}\\n"
+        body = re.sub(r"\n*RESULT_URL:\\s*https://\S+\\s*$", "", body)
+        body += f"\n\nRESULT_URL: {url}\n"
         api(f"/issues/{number}", "PATCH", {"body": body})
-        comment(number, f"השיר מוכן! 🎵\\n\\n[האזנה / הורדה]({url})\\n\\n[GitHub Release]({release_url})")
+        comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})\n\n[GitHub Release]({release_url})")
     set_status(number, "completed")
     api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
 
@@ -225,7 +225,7 @@ def download_temp_and_publish(number, temp_url):
     if not match:
         raise ValueError("Rejected temporary upload URL: invalid file identifier")
     download_url = f"https://tempfile.org/{match.group(1)}/download"
-    target = Path(tempfile.gettempdir()) / f"kaggle-music-song-{number}.mp3"
+    target = Path(tempfile.gettempdir()) / f"song-{number}.mp3"
     total = 0
     try:
         with urlopen(Request(download_url, headers={"User-Agent": "actions-kaggle-session"}), timeout=300) as response:
@@ -279,9 +279,9 @@ def main():
             issue_body = issue.get("body") or ""
             already_recorded = f"RESULT_URL: {url}" in issue_body
             if not already_recorded:
-                comment(number, f"השיר מוכן! 🎵\\n\\n[האזנה / הורדה]({url})\\n\\n[GitHub Release]({release_url})")
-                issue_body = re.sub(r"\\n*RESULT_URL:\\s*https://\\S+\\s*$", "", issue_body)
-                issue_body += f"\\n\\nRESULT_URL: {url}\\n"
+                comment(number, f"השיר מוכן! 🎵\n\n[האזנה / הורדה]({url})\n\n[GitHub Release]({release_url})")
+                issue_body = re.sub(r"\n*RESULT_URL:\\s*https://\S+\\s*$", "", issue_body)
+                issue_body += f"\n\nRESULT_URL: {url}\n"
                 api(f"/issues/{number}", "PATCH", {"body": issue_body})
             set_status(number, "completed")
             api(f"/issues/{number}", "PATCH", {"state": "closed", "state_reason": "completed"})
