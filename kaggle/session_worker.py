@@ -13,63 +13,43 @@ MODELS = ENGINE / "models"
 OUTPUT = Path("/kaggle/working")  # Kaggle publishes files saved directly in working as kernel outputs.
 
 
-_GITHUB_TOKEN = None
-_GITHUB_TOKEN_CHECKED = False
-
-
-def github_token():
-    """Read a private token from Kaggle Secrets; never embed it in the notebook."""
-    global _GITHUB_TOKEN, _GITHUB_TOKEN_CHECKED
-    if _GITHUB_TOKEN_CHECKED:
-        return _GITHUB_TOKEN
-    _GITHUB_TOKEN_CHECKED = True
-    try:
-        from kaggle_secrets import UserSecretsClient
-        _GITHUB_TOKEN = UserSecretsClient().get_secret("GITHUB_TOKEN")
-    except Exception as exc:
-        print("KAGGLE_LIVE_UPLOAD_DISABLED: add Kaggle secret GITHUB_TOKEN (" + type(exc).__name__ + ")", flush=True)
-    return _GITHUB_TOKEN
-
-
-def github_api(url, method="GET", payload=None, raw=None, content_type="application/json"):
-    token = github_token()
-    if not token:
-        raise RuntimeError("Kaggle secret GITHUB_TOKEN is not configured")
-    data = json.dumps(payload).encode("utf-8") if payload is not None else raw
-    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
-               "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "kaggle-music-live-uploader",
-               "Content-Type": content_type}
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=180) as response:
-        body = response.read()
-        return json.loads(body.decode("utf-8")) if body else None
-
-
-def publish_song_live(repo, issue_number, audio_path):
-    """Publish each completed MP3 immediately, without ending the Kaggle session."""
-    if not github_token():
-        return False
-    api = "https://api.github.com/repos/" + repo
-    tag = f"music-job-{issue_number}"
-    try:
-        release = github_api(api + "/releases", "POST", {
-            "tag_name": tag, "name": f"Generated music - Issue #{issue_number}",
-            "body": f"ACE-Step session output for issue #{issue_number}.",
-            "draft": False, "prerelease": True
-        })
-    except urllib.error.HTTPError as exc:
-        if exc.code != 422:
-            raise
-        release = github_api(api + "/releases/tags/" + tag)
-    existing = next((item for item in release.get("assets", []) if item.get("name") == audio_path.name), None)
-    if existing:
-        download_url = existing["browser_download_url"]
-    else:
-        upload_url = release["upload_url"].split("{", 1)[0] + "?name=" + urllib.parse.quote(audio_path.name)
-        asset = github_api(upload_url, "POST", raw=audio_path.read_bytes(), content_type="audio/mpeg")
-        download_url = asset["browser_download_url"]
-    print(f"KAGGLE_PUBLISHED:{issue_number}:{download_url}", flush=True)
-    return True
+def upload_temp_file(audio_path, issue_number):
+    """Upload an MP3 to TempFile.org; GitHub Actions performs authenticated publishing."""
+    boundary = "----KaggleMusic" + __import__("secrets").token_hex(16)
+    filename = audio_path.name.replace('"', "")
+    audio = audio_path.read_bytes()
+    if not 1024 <= len(audio) <= 100 * 1024 * 1024:
+        raise ValueError("MP3 size is outside TempFile.org's supported 1KB-100MB range")
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'
+        "Content-Type: audio/mpeg\r\n\r\n"
+    ).encode("utf-8") + audio + (
+        f"\r\n--{boundary}\r\n"
+        'Content-Disposition: form-data; name="expiryHours"\r\n\r\n'
+        "24\r\n"
+        f"--{boundary}--\r\n"
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        "https://tempfile.org/api/upload/local", data=body, method="POST",
+        headers={
+            "Content-Type": "multipart/form-data; boundary=" + boundary,
+            "Content-Length": str(len(body)),
+            "User-Agent": "kaggle-music-generator/1.0",
+            "Accept": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=300) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    files = result.get("files") or []
+    if not result.get("success") or not files:
+        raise RuntimeError("TempFile.org upload failed: " + json.dumps(result, ensure_ascii=False)[:800])
+    url = files[0].get("url", "")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "tempfile.org":
+        raise RuntimeError("TempFile.org returned an unexpected upload URL")
+    print(f"KAGGLE_TEMP_URL:{issue_number}:{url}", flush=True)
+    return url
 LM_MODEL = "acestep-5Hz-lm-4B-Q8_0.gguf"
 DIT_MODEL = "acestep-v15-turbo-Q8_0.gguf"
 
@@ -214,9 +194,9 @@ def generate(job):
             raise RuntimeError("ACE-Step produced an unexpectedly small MP3.")
         print(f"KAGGLE_DONE:{n}:{target.name}:{target.stat().st_size}", flush=True)
         try:
-            publish_song_live("unisocsu/kaggle-music-generator", n, target)
+            upload_temp_file(target, n)
         except Exception as exc:
-            print(f"KAGGLE_LIVE_UPLOAD_ERROR:{n}:{type(exc).__name__}:{str(exc)[:500]}", flush=True)
+            print(f"KAGGLE_TEMP_UPLOAD_ERROR:{n}:{type(exc).__name__}:{str(exc)[:500]}", flush=True)
 
 
 def get_queued_issues(repo, etag):
