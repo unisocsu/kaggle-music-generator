@@ -3,7 +3,7 @@
 Kaggle only performs anonymous GET requests to public Issues. GitHub Actions
 watches Kaggle logs and performs all authenticated GitHub writes.
 """
-import argparse, json, os, re, subprocess, time, urllib.error, urllib.parse, urllib.request
+import argparse, json, os, re, subprocess, sys, time, traceback, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 API_BASE = "https://api.github.com/repos/{repo}/issues"
@@ -118,11 +118,13 @@ def start_server():
     if not list(MODELS.glob("*.gguf")): raise RuntimeError("No GGUF models found in " + str(MODELS))
     log_path = Path("/kaggle/working/ace-server.log")
     log = log_path.open("w", encoding="utf-8")
+    server_env = os.environ.copy()
+    server_env.update({"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "PYTHONUTF8": "1"})
     proc = subprocess.Popen(
         [str(binary), "--models", str(MODELS), "--device", "CUDA0",
          "--vae-chunk", "256", "--vae-overlap", "32",
          "--host", "127.0.0.1", "--port", "8085"],
-        cwd=str(ENGINE), stdout=log, stderr=subprocess.STDOUT, env=os.environ.copy()
+        cwd=str(ENGINE), stdout=log, stderr=subprocess.STDOUT, env=server_env
     )
     deadline = time.monotonic() + 180
     while time.monotonic() < deadline:
@@ -314,11 +316,12 @@ def run_session(repo, poll_seconds, idle_seconds, max_seconds):
                             continue
                         generate(job)
                     except Exception as exc:
-                        # Kaggle log streams may use ASCII; escape non-ASCII diagnostics so Hebrew
-                        # text in ACE-Step errors cannot crash the error-reporting path itself.
-                        message = (type(exc).__name__ + ": " + str(exc)).replace("\n", " ")[:4000]
+                        # Keep the full Python traceback: the short exception text alone hides
+                        # which layer is attempting the failing ASCII conversion.
+                        details = traceback.format_exc()
+                        message = (type(exc).__name__ + ": " + str(exc) + "\\n" + details).replace("\r", "")
                         message = message.encode("ascii", errors="backslashreplace").decode("ascii")
-                        print(f"KAGGLE_FAILED:{n}:{message}", flush=True)
+                        print(f"KAGGLE_FAILED:{n}:{message[:12000]}", flush=True)
                     last_activity = time.monotonic()
             if time.monotonic() - last_activity >= idle_seconds:
                 print("KAGGLE_SESSION_IDLE_EXIT", flush=True)
