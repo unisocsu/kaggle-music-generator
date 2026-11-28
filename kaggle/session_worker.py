@@ -319,7 +319,7 @@ def run_session(repo, poll_seconds, idle_seconds, max_seconds):
                         # Keep the full Python traceback: the short exception text alone hides
                         # which layer is attempting the failing ASCII conversion.
                         details = traceback.format_exc()
-                        message = (type(exc).__name__ + ": " + str(exc) + "\\n" + details).replace("\r", "")
+                        message = (type(exc).__name__ + ": " + str(exc) + " | " + details).replace("\r", "").replace("\n", " | ")
                         message = message.encode("ascii", errors="backslashreplace").decode("ascii")
                         print(f"KAGGLE_FAILED:{n}:{message[:12000]}", flush=True)
                     last_activity = time.monotonic()
