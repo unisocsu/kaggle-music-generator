@@ -68,6 +68,54 @@ def server_json(path, method="GET", payload=None, timeout=120):
     body, headers = request(SERVER + path, method, payload, timeout=timeout)
     return json.loads(body.decode("utf-8")), headers
 
+def download_reference_audio(url, issue_number):
+    """Download only reference samples stored in this repository's public upload folder."""
+    parsed = urllib.parse.urlparse(str(url or ""))
+    expected_prefix = "/unisocsu/kaggle-music-generator/main/reference-audio/"
+    if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com" or not parsed.path.startswith(expected_prefix):
+        raise ValueError("reference_audio_url must point to this repository's reference-audio folder")
+    suffix = Path(parsed.path).suffix.lower()
+    if suffix not in (".mp3", ".wav", ".flac", ".m4a", ".aac"):
+        raise ValueError("Unsupported reference audio format")
+    req = urllib.request.Request(url, headers={"User-Agent": "kaggle-music-session"})
+    with urllib.request.urlopen(req, timeout=120) as response:
+        data = response.read(25 * 1024 * 1024 + 1)
+    if not 1024 <= len(data) <= 25 * 1024 * 1024:
+        raise ValueError("Reference audio must be between 1KB and 25MB")
+    target = OUTPUT / f"reference-{issue_number}{suffix}"
+    target.write_bytes(data)
+    return target
+
+
+def server_synth_with_reference(payload, audio_path, timeout=120):
+    """Send the synth request and reference recording as multipart form data."""
+    boundary = "----AceStepReference" + __import__("secrets").token_hex(16)
+    parts = []
+    for item in payload:
+        for key, value in item.items():
+            if value is None:
+                continue
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, ensure_ascii=False)
+            parts.append(
+                (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n").encode("utf-8")
+            )
+    audio = audio_path.read_bytes()
+    filename = audio_path.name.replace('"', "")
+    parts.append(
+        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"ref_audio\"; filename=\"{filename}\"\r\n"
+         f"Content-Type: application/octet-stream\r\n\r\n").encode("utf-8") + audio + b"\r\n"
+    )
+    parts.append(f"--{boundary}--\r\n".encode("ascii"))
+    body = b"".join(parts)
+    req = urllib.request.Request(
+        SERVER + "/synth", data=body, method="POST",
+        headers={"Content-Type": "multipart/form-data; boundary=" + boundary,
+                 "Content-Length": str(len(body)), "User-Agent": "kaggle-music-session"}
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8")), response.headers
+
 
 def start_server():
     binary = ENGINE / "build" / "ace-server"
@@ -181,7 +229,13 @@ def generate(job):
     wait_server_job(lm_id)
     enriched, _ = server_json("/job?id=" + urllib.parse.quote(str(lm_id)) + "&result=1")
     if not isinstance(enriched, list) or not enriched: raise RuntimeError("ACE-Step /lm returned an empty result.")
-    synth_ticket, _ = server_json("/synth", "POST", enriched)
+    reference_path = None
+    if job.get("reference_audio_url"):
+        reference_path = download_reference_audio(job["reference_audio_url"], n)
+    if reference_path:
+        synth_ticket, _ = server_synth_with_reference(enriched, reference_path)
+    else:
+        synth_ticket, _ = server_json("/synth", "POST", enriched)
     synth_id = synth_ticket.get("id")
     if not synth_id: raise RuntimeError("ACE-Step /synth did not return a job id: " + repr(synth_ticket))
     print("ACE_SYNTH_JOB:" + str(n) + ":" + str(synth_id), flush=True)
