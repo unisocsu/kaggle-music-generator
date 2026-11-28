@@ -314,7 +314,10 @@ def run_session(repo, poll_seconds, idle_seconds, max_seconds):
                             continue
                         generate(job)
                     except Exception as exc:
-                        message = (type(exc).__name__ + ": " + str(exc)).replace("\n", " ")[:1200]
+                        # Kaggle log streams may use ASCII; escape non-ASCII diagnostics so Hebrew
+                        # text in ACE-Step errors cannot crash the error-reporting path itself.
+                        message = (type(exc).__name__ + ": " + str(exc)).replace("\n", " ")[:4000]
+                        message = message.encode("ascii", errors="backslashreplace").decode("ascii")
                         print(f"KAGGLE_FAILED:{n}:{message}", flush=True)
                     last_activity = time.monotonic()
             if time.monotonic() - last_activity >= idle_seconds:
