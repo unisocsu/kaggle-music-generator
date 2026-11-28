@@ -26,7 +26,7 @@ Also add a Kaggle notebook Secret named `GITHUB_TOKEN` containing a fine-grained
 
 In Settings > Pages, choose Deploy from a branch, branch main, folder /docs.
 
-The frontend stores the user's GitHub token in browser localStorage and uses it directly for GitHub Issues API calls. The token is not sent to Kaggle. Use a fine-grained token restricted to this repository with Issues read/write permission. Anyone with access to this browser profile can access the saved token; use the disconnect button to remove it.
+The frontend stores the user's GitHub token in browser localStorage and uses it directly for GitHub Issues API calls. The token is not sent to Kaggle. Use a fine-grained token restricted to this repository with **Issues: Read and write** and **Contents: Read and write** permissions. Contents access is used to upload reference audio samples. Anyone with access to this browser profile can access the saved token; use the disconnect button to remove it.
 
 ## Run
 
@@ -66,7 +66,7 @@ The Q8_0 essentials model set is approximately 7.7 GB on disk. The server proces
 
 ## Layout
 
-- docs/: Chat-style GitHub Pages frontend with local token persistence, recent-song sidebar, and an explicit Start Engine control.
+- docs/: Chat-style GitHub Pages frontend with local token persistence, recent-song sidebar, an explicit Start Engine control, and optional public reference-audio uploads.
 - .github/workflows/issue-intake.yml: validates and queues new requests.
 - .github/workflows/run-kaggle-job.yml: starts Kaggle, follows live logs, downloads MP3s and publishes releases.
 - kaggle/notebook/: Kaggle notebook template and metadata.
