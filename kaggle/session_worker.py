@@ -88,26 +88,22 @@ def download_reference_audio(url, issue_number):
 
 
 def server_synth_with_reference(payload, audio_path, timeout=120):
-    """Send the synth request and reference recording as multipart form data."""
+    """Send JSON request plus a separate timbre-reference audio part."""
     boundary = "----AceStepReference" + __import__("secrets").token_hex(16)
-    parts = []
-    for item in payload:
-        for key, value in item.items():
-            if value is None:
-                continue
-            if isinstance(value, (dict, list)):
-                value = json.dumps(value, ensure_ascii=False)
-            parts.append(
-                (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n").encode("utf-8")
-            )
-    audio = audio_path.read_bytes()
+    request_json = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     filename = audio_path.name.replace('"', "")
-    parts.append(
-        (f"--{boundary}\r\nContent-Disposition: form-data; name=\"ref_audio\"; filename=\"{filename}\"\r\n"
-         f"Content-Type: application/octet-stream\r\n\r\n").encode("utf-8") + audio + b"\r\n"
-    )
-    parts.append(f"--{boundary}--\r\n".encode("ascii"))
-    body = b"".join(parts)
+    audio = audio_path.read_bytes()
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="request"; filename="request.json"\r\n'
+        "Content-Type: application/json\r\n\r\n"
+    ).encode("utf-8") + request_json + (
+        f"\r\n--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="ref_audio"; filename="{filename}"\r\n'
+        "Content-Type: application/octet-stream\r\n\r\n"
+    ).encode("utf-8") + audio + (
+        f"\r\n--{boundary}--\r\n"
+    ).encode("utf-8")
     req = urllib.request.Request(
         SERVER + "/synth", data=body, method="POST",
         headers={"Content-Type": "multipart/form-data; boundary=" + boundary,
@@ -115,7 +111,6 @@ def server_synth_with_reference(payload, audio_path, timeout=120):
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8")), response.headers
-
 
 def start_server():
     binary = ENGINE / "build" / "ace-server"
